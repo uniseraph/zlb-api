@@ -28,8 +28,8 @@ image:build
 	docker tag ${IMAGE_NAME} ${IMAGE_NAME}:${VERSION}
 
 run:local
-	chmod +x bundles/${VERSION}/binary/metad
-	./bundles/${VERSION}/binary/metad  --log-level debug start --consul-addr 127.0.0.1:8500 --addr 127.0.0.1:6400
+	chmod +x bundles/${VERSION}/binary/${TARGET}
+	./bundles/${VERSION}/binary/${TARGET}  --log-level debug start --consul-addr 127.0.0.1:8500 --addr 127.0.0.1:6300
 
 release:
 	docker tag ${IMAGE_NAME}:${VERSION}-${GITCOMMIT} ${IMAGE_NAME}:${VERSION}
