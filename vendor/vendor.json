@@ -1,0 +1,65 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "Y70OcOH543SdNK+nPbzDBI6Tas8=",
+			"path": "github.com/Sirupsen/logrus",
+			"revision": "1fe8319fcaef78ef9220c9b05178df0f871dbc5d",
+			"revisionTime": "2017-07-12T16:35:25Z"
+		},
+		{
+			"checksumSHA1": "bN5VICCd1hnDbxYZqXdJquzhf7o=",
+			"path": "github.com/codegangsta/cli",
+			"revision": "4b90d79a682b4bf685762c7452db20f2a676ecb2",
+			"revisionTime": "2017-07-06T19:46:25Z"
+		},
+		{
+			"checksumSHA1": "g/V4qrXjUGG9B+e3hB+4NAYJ5Gs=",
+			"path": "github.com/gorilla/context",
+			"revision": "08b5f424b9271eedf6f9f0ce86cb9396ed337a42",
+			"revisionTime": "2016-08-17T18:46:32Z"
+		},
+		{
+			"checksumSHA1": "hIbmXmNbwyP44fi1hh6zJrMcYws=",
+			"path": "github.com/gorilla/mux",
+			"revision": "ac112f7d75a0714af1bd86ab17749b31f7809640",
+			"revisionTime": "2017-07-03T15:07:09Z"
+		},
+		{
+			"checksumSHA1": "SodYLQcoCdaC65THb0YQJ7Qrkn4=",
+			"path": "github.com/hashicorp/consul/api",
+			"revision": "c2c28d5f659aaf65c190430d7ceeebc04f5ba93d",
+			"revisionTime": "2017-07-09T00:28:50Z"
+		},
+		{
+			"checksumSHA1": "b8F628srIitj5p7Y130xc9k0QWs=",
+			"path": "github.com/hashicorp/go-cleanhttp",
+			"revision": "3573b8b52aa7b37b9358d966a898feb387f62437",
+			"revisionTime": "2017-02-11T01:34:15Z"
+		},
+		{
+			"checksumSHA1": "A1PcINvF3UiwHRKn8UcgARgvGRs=",
+			"path": "github.com/hashicorp/go-rootcerts",
+			"revision": "6bb64b370b90e7ef1fa532be9e591a81c3493e00",
+			"revisionTime": "2016-05-03T14:34:40Z"
+		},
+		{
+			"checksumSHA1": "/oss17GO4hXGM7QnUdI3VzcAHzA=",
+			"path": "github.com/hashicorp/serf/coordinate",
+			"revision": "e39abe475740649229c5c72b0cc1da10da7ed23a",
+			"revisionTime": "2017-07-08T01:19:18Z"
+		},
+		{
+			"checksumSHA1": "V/quM7+em2ByJbWBLOsEwnY3j/Q=",
+			"path": "github.com/mitchellh/go-homedir",
+			"revision": "b8bc1bf767474819792c23f32d8286a45736f1c6",
+			"revisionTime": "2016-12-03T19:45:07Z"
+		},
+		{
+			"path": "golang.org/x/sys/unix",
+			"revision": ""
+		}
+	],
+	"rootPath": "github.com/zanecloud/metad"
+}
