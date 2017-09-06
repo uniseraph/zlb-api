@@ -9,94 +9,156 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/zanecloud/zlb/api/opts"
 	"net/http"
+	"strings"
 )
 
 const KEY_CONSUL_CLIENT = "consul.client"
 const KEY_SERVER_OPTS = "server.opts"
 
+const KEY_FORMAT = "zlb_healthcheck/%s"
+const STATE_OK = "OK"
+const STATE_FAIL = "FAIL"
+
 type Handler func(c context.Context, w http.ResponseWriter, r *http.Request)
 
-type Service struct {
-	api.AgentServiceRegistration
+type ApiResult struct {
+     State string `json:"state"`
+     Msg string   `json:"msg,omitempty"`
+     Data interface{} `json:"data,omitempty"`
 }
 
-func getServiceJSON(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
-
-	services, err := client.Agent().Services()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	name := mux.Vars(r)["name"]
-	service, ok := services[name]
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-
-	if service.Tags == nil {
-		service.Tags = []string{}
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(service)
-
-}
-func getServiceList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
-
-	result, err := client.Agent().Services()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	key := fmt.Sprintf(KEY_FORMAT,name);
+	pair, _, err := client.KV().Get(key,nil )
+	result := &ApiResult{}
+        if err != nil  {
+            result.State=STATE_FAIL
+            result.Msg = fmt.Sprintf("getDomain Error :%s", err.Error())
+ 	} else if pair == nil {
+            result.State=STATE_FAIL
+            result.Msg= fmt.Sprintf("Can't find The Domain :%s", name)
+        } else {
+            var f interface{}
+            err = json.Unmarshal(pair.Value, &f)            
+            result.State=STATE_OK
+            result.Data=f 
+        }
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
-func postServiceCreate(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
-	req := api.AgentServiceRegistration{}
+func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
+	keys, _, err :=  client.KV().Keys("zlb_healthcheck/", "/", nil)
+	var dynaArr []string
+	if err == nil {
+	     for _, key := range keys {
+		v := strings.Split(key, "/")
+		domainName := v[1]
+		dynaArr = append(dynaArr, domainName)
+	     }
+	}
+	
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+        w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	result := &ApiResult{
+		State:STATE_OK,
+		Data:dynaArr,
+	};
+        json.NewEncoder(w).Encode(result)
+}
+
+
+
+func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
+	result := &ApiResult{}
+        domainName := mux.Vars(r)["name"]
+        if domainName == "" {
+           result.State=STATE_FAIL
+           result.Msg="Please set DomainName in URI "
+        } else {
+	_, err:= client.KV().Delete(fmt.Sprintf(KEY_FORMAT,domainName),nil)
+        if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"domainName": domainName,
+		}).Infof("delete consule ", err.Error())
+                result.State=STATE_FAIL
+                result.Msg=fmt.Sprintf("delete fail :%s", err.Error())
+	} else {
+             result.State=STATE_OK
+        }
+        }
+        w.WriteHeader(http.StatusOK)
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(result)
+}
+
+func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
+ 	domainName := mux.Vars(r)["name"]
+        result := &ApiResult{}
+        if domainName != "" {	
+        
+        parasMap := make(map[string]string) 	
+	var keys []string
+	keys = append(keys,"type")
+	keys = append(keys,"uri")
+	keys = append(keys,"valid_statuses")
+	keys = append(keys,"interval")
+	keys = append(keys,"timeout")
+	keys = append(keys,"fall")
+	keys = append(keys,"rise")
+	keys = append(keys,"concurrency")
+
+	for i := 0; i <len(keys); i++ {
+      	     v := r.PostFormValue(keys[i])
+             if v != "" {
+               parasMap[keys[i]] = r.PostFormValue(keys[i])
+             }
 	}
 
-	logrus.Debugf("postServiceCreate::receving a request :%#v", req)
+	jsonString,_ := json.Marshal(parasMap)
+	_, err := client.KV().Put(&api.KVPair{
+		Key:   fmt.Sprintf(KEY_FORMAT, domainName),
+		Value: jsonString,
+	}, nil)
 
-	client, ok := ctx.Value("consul.client").(*api.Client)
 
-	if !ok {
-		logrus.Errorf("postServiceCreate:can't get a consul client,ctx is %#v", ctx)
-		http.Error(w, fmt.Sprintf("postServiceCreate:can't get a consul client,ctx is %#v", ctx), http.StatusBadRequest)
-		return
+       if err != nil {
+		logrus.WithFields(logrus.Fields{"domainname": domainName,
+			"jsonString": jsonString,}).Infof("put consule fail :%s", err.Error())
+		result.State = STATE_FAIL
+		result.Msg =  fmt.Sprintf("put consule fail :%s", err.Error())
+	} else {
+		result.State  = STATE_OK;
 	}
-
-	if err := client.Agent().ServiceRegister(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+        } else {
+              result.State = STATE_FAIL
+              result.Msg =  "Please set DomainName in URI"
+        } 
 	w.WriteHeader(http.StatusOK)
-
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 var routers = map[string]map[string]Handler{
 	"HEAD": {},
 	"GET": {
-		"/services/list":              getServiceList,
-		"/services/{name:.*}/inspect": getServiceJSON,
+	    "/zlb/domains":              getDomainList,
+	    "/zlb/domains/{name:.*}": getDomainJson,
 	},
-	"POST": {
-		"/services/create": postServiceCreate,
+	"POST": {},
+	"PUT":     {
+	    "/zlb/domains/{name:.*}": putHealthCheckCfg,
 	},
-	"PUT":     {},
-	"DELETE":  {},
+	"DELETE":  {
+	    "/zlb/domains/{name:.*}": deleteHealthCheckCfg,
+	},
 	"OPTIONS": {},
 }
 
