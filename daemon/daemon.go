@@ -40,7 +40,6 @@ func getServiceJSON(ctx context.Context, w http.ResponseWriter, r *http.Request)
 		service.Tags = []string{}
 	}
 
-
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(service)
@@ -101,7 +100,7 @@ var routers = map[string]map[string]Handler{
 	"OPTIONS": {},
 }
 
-func RunMetad(opts opts.Options) {
+func Run(opts opts.Options) {
 
 	consulClient, err := api.NewClient(&api.Config{Address: opts.Consul})
 	if err != nil {

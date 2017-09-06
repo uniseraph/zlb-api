@@ -78,6 +78,6 @@ func startCommand(cli *cli.Context) {
 	opts.Consul = cli.String("consul-addr")
 	opts.Address = cli.String("addr")
 
-	daemon.RunMetad(opts)
+	daemon.Run(opts)
 
 }
