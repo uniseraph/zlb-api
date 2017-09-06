@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Sirupsen/logrus"
+        "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/consul/api"
 	"github.com/zanecloud/zlb/api/opts"
@@ -27,6 +27,17 @@ type ApiResult struct {
      Data interface{} `json:"data,omitempty"`
 }
 
+type HealthCheckCfg struct {
+     Type string  `json:"type"`
+     Uri string   `json:"uri,omitempty"`
+     Valid_statuses string `json:"valid_statuses,omitempty"`
+     Interval int  `json:"interval,omitempty"`
+     Timeout int  `json:"timeout,omitempty"`
+     Fall int    `json:"fall,omitempty"`
+     Rise int    `json:"rise,omitempty"`
+     Concurrency int `json:"concurrency,omitempty"`
+}
+
 func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	name := mux.Vars(r)["name"]
@@ -34,17 +45,18 @@ func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	pair, _, err := client.KV().Get(key,nil )
 	result := &ApiResult{}
         if err != nil  {
-            result.State=STATE_FAIL
-            result.Msg = fmt.Sprintf("getDomain Error :%s", err.Error())
- 	} else if pair == nil {
-            result.State=STATE_FAIL
-            result.Msg= fmt.Sprintf("Can't find The Domain :%s", name)
-        } else {
-            var f interface{}
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+ 	} 
+        if pair == nil {
+            http.Error(w, fmt.Sprintf("Can't find The Domain :%s", name), 404)
+            return
+        } 
+        var f interface{}
             err = json.Unmarshal(pair.Value, &f)            
             result.State=STATE_OK
             result.Data=f 
-        }
+        
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
@@ -54,16 +66,16 @@ func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	keys, _, err :=  client.KV().Keys("zlb_healthcheck/", "/", nil)
 	var dynaArr []string
-	if err == nil {
-	     for _, key := range keys {
+	if err != nil {
+            http.Error(w,err.Error(),http.StatusInternalServerError)
+            return
+        }
+	for _, key := range keys {
 		v := strings.Split(key, "/")
 		domainName := v[1]
 		dynaArr = append(dynaArr, domainName)
-	     }
 	}
-	
-
-        w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	result := &ApiResult{
 		State:STATE_OK,
@@ -76,23 +88,21 @@ func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 
 func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
-	result := &ApiResult{}
         domainName := mux.Vars(r)["name"]
         if domainName == "" {
-           result.State=STATE_FAIL
-           result.Msg="Please set DomainName in URI "
-        } else {
+           http.Error(w,"Please set DomainName in URI ",404)
+           return;
+        } 
 	_, err:= client.KV().Delete(fmt.Sprintf(KEY_FORMAT,domainName),nil)
         if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"domainName": domainName,
 		}).Infof("delete consule ", err.Error())
-                result.State=STATE_FAIL
-                result.Msg=fmt.Sprintf("delete fail :%s", err.Error())
-	} else {
-             result.State=STATE_OK
-        }
-        }
+	   http.Error(w,"Please set DomainName in URI ",http.StatusInternalServerError)
+           return;
+        } 
+        result := &ApiResult{}
+        result.State=STATE_OK
         w.WriteHeader(http.StatusOK)
         w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(result)
@@ -102,63 +112,43 @@ func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
  	domainName := mux.Vars(r)["name"]
         result := &ApiResult{}
-        if domainName != "" {	
-        
-        parasMap := make(map[string]string) 	
-	var keys []string
-	keys = append(keys,"type")
-	keys = append(keys,"uri")
-	keys = append(keys,"valid_statuses")
-	keys = append(keys,"interval")
-	keys = append(keys,"timeout")
-	keys = append(keys,"fall")
-	keys = append(keys,"rise")
-	keys = append(keys,"concurrency")
-
-	for i := 0; i <len(keys); i++ {
-      	     v := r.PostFormValue(keys[i])
-             if v != "" {
-               parasMap[keys[i]] = r.PostFormValue(keys[i])
-             }
-	}
-
-	jsonString,_ := json.Marshal(parasMap)
-	_, err := client.KV().Put(&api.KVPair{
-		Key:   fmt.Sprintf(KEY_FORMAT, domainName),
-		Value: jsonString,
-	}, nil)
-
-
-       if err != nil {
-		logrus.WithFields(logrus.Fields{"domainname": domainName,
-			"jsonString": jsonString,}).Infof("put consule fail :%s", err.Error())
-		result.State = STATE_FAIL
-		result.Msg =  fmt.Sprintf("put consule fail :%s", err.Error())
-	} else {
-		result.State  = STATE_OK;
-	}
-        } else {
-              result.State = STATE_FAIL
-              result.Msg =  "Please set DomainName in URI"
+        if domainName == "" {
+           http.Error(w,"Please set DomainName in URI ",404)
+           return;
+        }
+        req := &HealthCheckCfg{}
+        if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+           http.Error(w,err.Error(),http.StatusInternalServerError)
+           return;
         } 
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+        jsonstr,_ :=json.Marshal(req)
+        _, err := client.KV().Put(&api.KVPair{
+		  Key:   fmt.Sprintf(KEY_FORMAT, domainName),
+		  Value: jsonstr,
+        }, nil)
+
+        if err != nil {
+		 logrus.WithFields(logrus.Fields{"domainname": domainName}).Infof("put consule fail :%s", err.Error())
+          http.Error(w,err.Error(),http.StatusInternalServerError)
+          return;
+        }
+        result.State  = STATE_OK
+        w.WriteHeader(http.StatusOK)
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(result)
 }
 
 var routers = map[string]map[string]Handler{
 	"HEAD": {},
-	"GET": {
-	    "/zlb/domains":              getDomainList,
-	    "/zlb/domains/{name:.*}": getDomainJson,
-	},
-	"POST": {},
-	"PUT":     {
-	    "/zlb/domains/{name:.*}": putHealthCheckCfg,
-	},
-	"DELETE":  {
-	    "/zlb/domains/{name:.*}": deleteHealthCheckCfg,
-	},
+	"GET": {},
+        "POST": {
+            "/zlb/domains/list":              getDomainList,
+            "/zlb/domains/{name:.*}/inspect": getDomainJson,
+            "/zlb/domains/{name:.*}/update": putHealthCheckCfg,
+            "/zlb/domains/{name:.*}/remove": deleteHealthCheckCfg, 
+        },
+	"PUT":{},
+	"DELETE":{},
 	"OPTIONS": {},
 }
 
