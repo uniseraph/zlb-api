@@ -23,17 +23,15 @@ local:
 	CGO_ENABLED=0 go build -v -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GITCOMMIT} -X main.BuildTime=${BUILD_TIME}" -o bundles/${VERSION}/binary/zlb-api
 
 image:build
-	docker build -t ${IMAGE_NAME} .
-	docker tag ${IMAGE_NAME} ${IMAGE_NAME}:${VERSION}-${GITCOMMIT}
-	docker tag ${IMAGE_NAME} ${IMAGE_NAME}:${VERSION}
+	docker build -t ${IMAGE_NAME}:${VERSION}-${GITCOMMIT} .
+	docker tag ${IMAGE_NAME}:${VERSION}-${GITCOMMIT}  ${IMAGE_NAME}:${VERSION}
+	docker tag ${IMAGE_NAME}:${VERSION}-${GITCOMMIT}  ${IMAGE_NAME}
 
 run:local
 	chmod +x bundles/${VERSION}/binary/${TARGET}
 	./bundles/${VERSION}/binary/${TARGET}  --log-level debug start --consul-addr 127.0.0.1:8500 --addr 127.0.0.1:6300
 
-release:
-	docker tag ${IMAGE_NAME}:${VERSION}-${GITCOMMIT} ${IMAGE_NAME}:${VERSION}
-	docker tag ${IMAGE_NAME}:${VERSION}-${GITCOMMIT} ${IMAGE_NAME}
+release:build
 	docker push ${IMAGE_NAME}:${VERSION}-${GITCOMMIT}
 	docker push ${IMAGE_NAME}:${VERSION}
 	docker push ${IMAGE_NAME}
