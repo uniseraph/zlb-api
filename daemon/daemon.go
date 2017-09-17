@@ -38,6 +38,12 @@ type HealthCheckCfg struct {
 	Concurrency    int    `json:"concurrency,omitempty"`
 }
 
+type CookieFilter struct {
+	Name string `json:"name"`
+	Value string `json:"value"`
+	Lifecycle int64 `json:"lifecycle"`
+}
+
 func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	name := mux.Vars(r)["name"]
@@ -136,6 +142,38 @@ func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(result)
 }
 
+func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
+	domainName := mux.Vars(r)["name"]
+	result := &ApiResult{}
+	if domainName == "" {
+		http.Error(w, "Please set DomainName in URI ", 404)
+		return
+	}
+	req := &CookieFilter{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	consulkey := fmt.Sprintf("zlb_cookiefilter/%s/%s/%s", req.Name,domainName,req.Value)
+	_, err := client.KV().Put(&api.KVPair{
+		Key:   consulkey,
+		Value: []byte(fmt.Sprintf("%d",req.Lifecycle)),
+	}, nil)
+
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("put consule fail :%s", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	result.State = STATE_OK
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+
 var routers = map[string]map[string]Handler{
 	"HEAD": {},
 	"GET":  {},
@@ -144,6 +182,7 @@ var routers = map[string]map[string]Handler{
 		"/zlb/domains/{name:.*}/inspect": getDomainJson,
 		"/zlb/domains/{name:.*}/update":  putHealthCheckCfg,
 		"/zlb/domains/{name:.*}/remove":  deleteHealthCheckCfg,
+		"/zlb/domains/{name:.*}/setCookieFilter": setCookieFilter,
 	},
 	"PUT":     {},
 	"DELETE":  {},
