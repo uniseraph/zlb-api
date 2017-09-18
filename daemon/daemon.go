@@ -15,7 +15,12 @@ import (
 const KEY_CONSUL_CLIENT = "consul.client"
 const KEY_SERVER_OPTS = "server.opts"
 
-const KEY_FORMAT = "zlb_healthcheck/%s"
+const KEY_HEALTHCHECK_FORMAT = "zlb_healthcheck/%s"
+//example zlb_healthcheck/a.com
+const KEY_DOMAIN_FORMAT = "zlb_domain/%s"
+//example zlb_domain/a.com
+const KEY_COOKIEFILTER_FORMAT = "zlb_cookiefilter/%s/%s/%s"
+//example zlb_cookiefilter/a.com/x-arg-tag/coupon
 const STATE_OK = "OK"
 const STATE_FAIL = "FAIL"
 
@@ -47,7 +52,7 @@ type CookieFilter struct {
 func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	name := mux.Vars(r)["name"]
-	key := fmt.Sprintf(KEY_FORMAT, name)
+	key := fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, name)
 	pair, _, err := client.KV().Get(key, nil)
 	result := &ApiResult{}
 	if err != nil {
@@ -97,7 +102,7 @@ func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Re
 		http.Error(w, "Please set DomainName in URI ", 404)
 		return
 	}
-	_, err := client.KV().Delete(fmt.Sprintf(KEY_FORMAT, domainName), nil)
+	_, err := client.KV().Delete(fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, domainName), nil)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"domainName": domainName,
@@ -127,7 +132,7 @@ func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	}
 	jsonstr, _ := json.Marshal(req)
 	_, err := client.KV().Put(&api.KVPair{
-		Key:   fmt.Sprintf(KEY_FORMAT, domainName),
+		Key:   fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, domainName),
 		Value: jsonstr,
 	}, nil)
 
@@ -156,7 +161,7 @@ func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	consulkey := fmt.Sprintf("zlb_cookiefilter/%s/%s/%s", req.Name,domainName,req.Value)
+	consulkey := fmt.Sprintf(KEY_COOKIEFILTER_FORMAT,domainName,req.Name,req.Value)
 	_, err := client.KV().Put(&api.KVPair{
 		Key:   consulkey,
 		Value: []byte(fmt.Sprintf("%d",req.Lifecycle)),
@@ -173,6 +178,48 @@ func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(result)
 }
 
+func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
+	domainName := mux.Vars(r)["name"]
+	result := &ApiResult{}
+	if domainName == "" {
+		http.Error(w, "Please set DomainName in URI ", 404)
+		return
+	}
+
+
+	consulkey := fmt.Sprintf(KEY_DOMAIN_FORMAT,domainName)
+	_, err := client.KV().DeleteTree(consulkey+"/",nil);
+
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	consulkey = fmt.Sprintf(KEY_HEALTHCHECK_FORMAT,domainName);
+	_,err =  client.KV().Delete(consulkey,nil)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	consulkey = fmt.Sprintf("zlb_cookiefilter/%s/",domainName);
+	_,err =  client.KV().DeleteTree(consulkey,nil)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result.State = STATE_OK
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+
 
 var routers = map[string]map[string]Handler{
 	"HEAD": {},
@@ -183,6 +230,7 @@ var routers = map[string]map[string]Handler{
 		"/zlb/domains/{name:.*}/update":  putHealthCheckCfg,
 		"/zlb/domains/{name:.*}/remove":  deleteHealthCheckCfg,
 		"/zlb/domains/{name:.*}/setCookieFilter": setCookieFilter,
+		"/zlb/domains/{name:.*}/destroy": destroyDomain,
 	},
 	"PUT":     {},
 	"DELETE":  {},
