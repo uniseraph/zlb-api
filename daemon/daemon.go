@@ -26,11 +26,7 @@ const STATE_FAIL = "FAIL"
 
 type Handler func(c context.Context, w http.ResponseWriter, r *http.Request)
 
-type ApiResult struct {
-	State string      `json:"state"`
-	Msg   string      `json:"msg,omitempty"`
-	Data  interface{} `json:"data,omitempty"`
-}
+
 
 type HealthCheckCfg struct {
 	Type           string `json:"type"`
@@ -54,7 +50,6 @@ func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	name := mux.Vars(r)["name"]
 	key := fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, name)
 	pair, _, err := client.KV().Get(key, nil)
-	result := &ApiResult{}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -63,14 +58,9 @@ func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		http.Error(w, fmt.Sprintf("Can't find The Domain :%s", name), 404)
 		return
 	}
-	var f interface{}
-	err = json.Unmarshal(pair.Value, &f)
-	result.State = STATE_OK
-	result.Data = f
-
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.Write(pair.Value)
 }
 
 func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -88,11 +78,8 @@ func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	result := &ApiResult{
-		State: STATE_OK,
-		Data:  dynaArr,
-	}
-	json.NewEncoder(w).Encode(result)
+	jsonstr, _ := json.Marshal(dynaArr)
+ 	w.Write([]byte(jsonstr))
 }
 
 func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -110,17 +97,14 @@ func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Re
 		http.Error(w, "Please set DomainName in URI ", http.StatusInternalServerError)
 		return
 	}
-	result := &ApiResult{}
-	result.State = STATE_OK
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.Write([]byte("ok"))
 }
 
 func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	domainName := mux.Vars(r)["name"]
-	result := &ApiResult{}
+
 	if domainName == "" {
 		http.Error(w, "Please set DomainName in URI ", 404)
 		return
@@ -141,16 +125,14 @@ func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	result.State = STATE_OK
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.Write([]byte("ok"))
+
 }
 
 func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	domainName := mux.Vars(r)["name"]
-	result := &ApiResult{}
 	if domainName == "" {
 		http.Error(w, "Please set DomainName in URI ", 404)
 		return
@@ -172,16 +154,13 @@ func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	result.State = STATE_OK
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.Write([]byte("ok"))
 }
 
 func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	domainName := mux.Vars(r)["name"]
-	result := &ApiResult{}
 	if domainName == "" {
 		http.Error(w, "Please set DomainName in URI ", 404)
 		return
@@ -213,10 +192,9 @@ func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	result.State = STATE_OK
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.Write([]byte("ok"))
 }
 
 
@@ -225,12 +203,12 @@ var routers = map[string]map[string]Handler{
 	"HEAD": {},
 	"GET":  {},
 	"POST": {
-		"/zlb/domains/list":              getDomainList,
-		"/zlb/domains/{name:.*}/inspect": getDomainJson,
-		"/zlb/domains/{name:.*}/update":  putHealthCheckCfg,
-		"/zlb/domains/{name:.*}/remove":  deleteHealthCheckCfg,
-		"/zlb/domains/{name:.*}/setCookieFilter": setCookieFilter,
-		"/zlb/domains/{name:.*}/destroy": destroyDomain,
+		"/zlb/healthcheck/list":              getDomainList,
+		"/zlb/healthcheck/{name:.*}/inspect": getDomainJson,
+		"/zlb/healthcheck/{name:.*}/update":  putHealthCheckCfg,
+		"/zlb/healthcheck/{name:.*}/remove":  deleteHealthCheckCfg,
+		"/zlb/cookie/{name:.*}/setCookieFilter": setCookieFilter,
+		"/zlb/domain/{name:.*}/remove": destroyDomain,
 	},
 	"PUT":     {},
 	"DELETE":  {},
