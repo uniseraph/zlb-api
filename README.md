@@ -3,20 +3,20 @@
 注意：所有API接口目前只支持HTTP POST 访问
 
 * 后端服务健康检查接口API
-    *  获取所有支持健康检查的域名列表(/zlb/domains/list)
+    *  获取所有支持健康检查的域名列表(/zlb/healthcheck/list)
 ```
-请求：curl -X POST http://127.0.0.1:6300/zlb/domains/list
-响应：{"state":"OK","data":["a.com","b.com"]}
+请求：curl -X POST http://127.0.0.1:6300/zlb/healthcheck/list
+响应：["a.com","b.com"]
 ```
-    *  得到某个域名对应后端服务健康检查的相关配置信息(zlb/domains/${domainName}/inspect)
+    *  得到某个域名对应后端服务健康检查的相关配置信息(zlb/healthcheck/${domainName}/inspect)
 ``` 
-请求: curl -X POST http://127.0.0.1:6300/zlb/domains/a.com/inspect
-响应: {"state":"OK","data":{"type":"http","uri":"/health","valid_statuses","200,302"}}
+请求: curl -X POST http://127.0.0.1:6300/zlb/healthcheck/a.com/inspect
+响应:{"type":"http","uri":"/health","valid_statuses","200,302"}
 ```
-    *  更新某个域名对应的后端服务健康检查配置信息(zlb/domains/${domainName}/update)
+    *  更新某个域名对应的后端服务健康检查配置信息(zlb/healthcheck/${domainName}/update)
 ``` 
-请求: curl -X POST --data "{"type":"http","uri":"/health","valid_statuses":"200,302"}' http://127.0.0.1:6300/zlb/domains/a.com/update
-响应: {"state":"OK"}
+请求: curl -X POST --data "{"type":"http","uri":"/health","valid_statuses":"200,302"}' http://127.0.0.1:6300/zlb/healthcheck/a.com/update
+响应: ok
 ```
 关于健康检查配置信息的说明
 ```
@@ -31,20 +31,20 @@ concurrency : 健康检查时的并发线程数
 ```
     * 移除某个域名的健康检查项，不再对此域名对应后端服务节点进行健康检查(zlb/domains/${domainName}/remove)
 ``` 
-请求：curl -X POST http://127.0.0.1/a.com/remove
-响应：{"state":"OK"}
+请求：curl -X POST http://127.0.0.1:6300/zlb/healthcheck/a.com/remove
+响应：ok
 ```
-* Cookie拦截功能接口API (zlb/domains/${domainName}/setCookieFilter)
+* Cookie拦截功能接口API (zlb/cookie/${domainName}/setCookieFilter)
 ```
 该功能主要实现对特定Cookie特定值的拦截  
-请求：curl -X POST --data '{"name":"x-gray-tag","value","tag1","lifecylce":0}' POST http://127.0.0.1/a.com/setCookieFilter
+请求：curl -X POST --data '{"name":"x-gray-tag","value","tag1","lifecylce":0}'  http://127.0.0.1:6300/zlb/cookie/a.com/setCookieFilter
 参数说明：
 name : Cookie 键名称
 value: Cookie 键键值
 lifecycle:  为0表示不拦截，大于0表示拦截
 ```
-* 删除相关域名接口API (zlb/domains/${domainName}/destroy)
+* 删除相关域名接口API (zlb/domain/${domainName}/remove)
 ``` 
-请求：curl -X POST http://127.0.0.1:6300/zlb/domains/a.com/destroy
-响应：{"state":"OK"}
+请求：curl -X POST http://127.0.0.1:6300/zlb/domain/a.com/remove
+响应：ok
 ```
