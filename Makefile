@@ -29,7 +29,7 @@ image:build
 
 run:local
 	chmod +x bundles/${VERSION}/binary/${TARGET}
-	./bundles/${VERSION}/binary/${TARGET}  --log-level debug start --consul-addr 127.0.0.1:8500 --addr 127.0.0.1:6300
+	./bundles/${VERSION}/binary/${TARGET}  --log-level debug start --consul-addr 127.0.0.1:8500 --addr 0.0.0.0:6300
 
 release:build
 	docker push ${IMAGE_NAME}:${VERSION}-${GITCOMMIT}
