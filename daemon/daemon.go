@@ -16,33 +16,34 @@ const KEY_CONSUL_CLIENT = "consul.client"
 const KEY_SERVER_OPTS = "server.opts"
 
 const KEY_HEALTHCHECK_FORMAT = "zlb_healthcheck/%s"
+
 //example zlb_healthcheck/a.com
 const KEY_DOMAIN_FORMAT = "zlb_domain/%s"
+
 //example zlb_domain/a.com
 const KEY_COOKIEFILTER_FORMAT = "zlb_cookiefilter/%s/%s/%s"
+
 //example zlb_cookiefilter/a.com/x-arg-tag/coupon
 const STATE_OK = "OK"
 const STATE_FAIL = "FAIL"
 
 type Handler func(c context.Context, w http.ResponseWriter, r *http.Request)
 
-
-
 type HealthCheckCfg struct {
-	Type           string `json:"type"`
-	Uri            string `json:"uri,omitempty"`
-	Valid_statuses string `json:"valid_statuses,omitempty"`
-	Interval       int    `json:"interval,omitempty"`
-	Timeout        int    `json:"timeout,omitempty"`
-	Fall           int    `json:"fall,omitempty"`
-	Rise           int    `json:"rise,omitempty"`
-	Concurrency    int    `json:"concurrency,omitempty"`
+	Type           string `json:"Type"`
+	Uri            string `json:"Uri,omitempty"`
+	Valid_statuses string `json:"Valid_statuses,omitempty"`
+	Interval       int    `json:"Interval,omitempty"`
+	Timeout        int    `json:"Timeout,omitempty"`
+	Fall           int    `json:"Fall,omitempty"`
+	Rise           int    `json:"Rise,omitempty"`
+	Concurrency    int    `json:"Concurrency,omitempty"`
 }
 
 type CookieFilter struct {
-	Name string `json:"name"`
-	Value string `json:"value"`
-	Lifecycle int64 `json:"lifecycle"`
+	Name      string `json:"Name"`
+	Value     string `json:"Value"`
+	Lifecycle int64  `json:"Lifecycle"`
 }
 
 func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -79,7 +80,7 @@ func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	jsonstr, _ := json.Marshal(dynaArr)
- 	w.Write([]byte(jsonstr))
+	w.Write([]byte(jsonstr))
 }
 
 func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -143,10 +144,10 @@ func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	consulkey := fmt.Sprintf(KEY_COOKIEFILTER_FORMAT,domainName,req.Name,req.Value)
+	consulkey := fmt.Sprintf(KEY_COOKIEFILTER_FORMAT, domainName, req.Name, req.Value)
 	_, err := client.KV().Put(&api.KVPair{
 		Key:   consulkey,
-		Value: []byte(fmt.Sprintf("%d",req.Lifecycle)),
+		Value: []byte(fmt.Sprintf("%d", req.Lifecycle)),
 	}, nil)
 
 	if err != nil {
@@ -166,9 +167,8 @@ func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-
-	consulkey := fmt.Sprintf(KEY_DOMAIN_FORMAT,domainName)
-	_, err := client.KV().DeleteTree(consulkey+"/",nil);
+	consulkey := fmt.Sprintf(KEY_DOMAIN_FORMAT, domainName)
+	_, err := client.KV().DeleteTree(consulkey+"/", nil)
 
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
@@ -176,16 +176,16 @@ func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	consulkey = fmt.Sprintf(KEY_HEALTHCHECK_FORMAT,domainName);
-	_,err =  client.KV().Delete(consulkey,nil)
+	consulkey = fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, domainName)
+	_, err = client.KV().Delete(consulkey, nil)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	consulkey = fmt.Sprintf("zlb_cookiefilter/%s/",domainName);
-	_,err =  client.KV().DeleteTree(consulkey,nil)
+	consulkey = fmt.Sprintf("zlb_cookiefilter/%s/", domainName)
+	_, err = client.KV().DeleteTree(consulkey, nil)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -197,18 +197,16 @@ func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte("ok"))
 }
 
-
-
 var routers = map[string]map[string]Handler{
 	"HEAD": {},
 	"GET":  {},
 	"POST": {
-		"/zlb/healthcheck/list":              getDomainList,
-		"/zlb/healthcheck/{name:.*}/inspect": getDomainJson,
-		"/zlb/healthcheck/{name:.*}/update":  putHealthCheckCfg,
-		"/zlb/healthcheck/{name:.*}/remove":  deleteHealthCheckCfg,
+		"/zlb/healthcheck/list":                 getDomainList,
+		"/zlb/healthcheck/{name:.*}/inspect":    getDomainJson,
+		"/zlb/healthcheck/{name:.*}/update":     putHealthCheckCfg,
+		"/zlb/healthcheck/{name:.*}/remove":     deleteHealthCheckCfg,
 		"/zlb/cookie/{name:.*}/setCookieFilter": setCookieFilter,
-		"/zlb/domain/{name:.*}/remove": destroyDomain,
+		"/zlb/domain/{name:.*}/remove":          destroyDomain,
 	},
 	"PUT":     {},
 	"DELETE":  {},
