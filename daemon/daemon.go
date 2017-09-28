@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"encoding/base64"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -15,17 +16,7 @@ import (
 const KEY_CONSUL_CLIENT = "consul.client"
 const KEY_SERVER_OPTS = "server.opts"
 
-const KEY_HEALTHCHECK_FORMAT = "zlb_healthcheck/%s"
 
-//example zlb_healthcheck/a.com
-const KEY_DOMAIN_FORMAT = "zlb_domain/%s"
-
-//example zlb_domain/a.com
-const KEY_COOKIEFILTER_FORMAT = "zlb_cookiefilter/%s/%s/%s"
-
-//example zlb_cookiefilter/a.com/x-arg-tag/coupon
-const STATE_OK = "OK"
-const STATE_FAIL = "FAIL"
 
 type Handler func(c context.Context, w http.ResponseWriter, r *http.Request)
 
@@ -40,33 +31,75 @@ type HealthCheckCfg struct {
 	Concurrency    int    `json:"Concurrency,omitempty"`
 }
 
+type DomainCfg struct {
+	Healthcheck  HealthCheckCfg `json:"Healthcheck"`
+	Sticky bool  `json:"Sticky,omitempty"`
+	KeepAlive int `json:"KeepAlive,omitempty"`
+    Path string `json:"Path,omitempty"`
+}
+
 type CookieFilter struct {
 	Name      string `json:"Name"`
 	Value     string `json:"Value"`
 	Lifecycle int64  `json:"Lifecycle"`
 }
 
+func explodeHelper(m map[string]interface{}, k, v, p string) error {
+	if strings.Contains(k, "/") {
+		parts := strings.Split(k, "/")
+		fmt.Printf("%s= %d",k,len(parts))
+		top := parts[0]
+		if strings.HasPrefix(top,"path_") {
+			udec,_ := base64.URLEncoding.DecodeString(top[5:])
+		    top = string(udec)
+		}
+		key := strings.Join(parts[1:], "/")
+		if _, ok := m[top]; !ok {
+			m[top] = make(map[string]interface{})
+		}
+		nest, ok := m[top].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("not a map: %q: %q already has value %q", p, top, m[top])
+		}
+		return explodeHelper(nest, key, v, k)
+	}
+
+	if k != "" {
+		if strings.HasPrefix(k,"path_"){
+			udec,_:= base64.URLEncoding.DecodeString(k[5:]);
+			k = string(udec)
+		}
+		m[k] = v
+	}
+
+	return nil
+}
+
 func getDomainJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	name := mux.Vars(r)["name"]
-	key := fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, name)
-	pair, _, err := client.KV().Get(key, nil)
+	pairs, _, err := client.KV().List("zlb/" + name + "/", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if pair == nil {
-		http.Error(w, fmt.Sprintf("Can't find The Domain :%s", name), 404)
-		return
+	m := make(map[string]interface{})
+	for _, pair := range pairs {
+		if err := explodeHelper(m, pair.Key, string(pair.Value) , pair.Key); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
+
+	jsonstr, _ := json.Marshal(m)
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(pair.Value)
+	w.Write([]byte(jsonstr))
 }
 
 func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
-	keys, _, err := client.KV().Keys("zlb_healthcheck/", "/", nil)
+	keys, _, err := client.KV().Keys("zlb/", "/", nil)
 	var dynaArr []string
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -83,26 +116,9 @@ func getDomainList(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(jsonstr))
 }
 
-func deleteHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
-	domainName := mux.Vars(r)["name"]
-	if domainName == "" {
-		http.Error(w, "Please set DomainName in URI ", 404)
-		return
-	}
-	_, err := client.KV().Delete(fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, domainName), nil)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"domainName": domainName,
-		}).Infof("delete consule ", err.Error())
-		http.Error(w, "Please set DomainName in URI ", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
-}
 
-func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+
+func updateDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	domainName := mux.Vars(r)["name"]
 
@@ -110,14 +126,20 @@ func putHealthCheckCfg(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Please set DomainName in URI ", 404)
 		return
 	}
-	req := &HealthCheckCfg{}
+	req := &DomainCfg{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	path := req.Path
+	if (path == "" ) {
+	   	path = "/";
+	}
+	path = "path_" + base64.URLEncoding.EncodeToString([]byte(path))
+
 	jsonstr, _ := json.Marshal(req)
 	_, err := client.KV().Put(&api.KVPair{
-		Key:   fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, domainName),
+		Key:   fmt.Sprintf("zlb/%s/cfg/%s", domainName,path),
 		Value: jsonstr,
 	}, nil)
 
@@ -144,7 +166,7 @@ func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	consulkey := fmt.Sprintf(KEY_COOKIEFILTER_FORMAT, domainName, req.Name, req.Value)
+	consulkey := fmt.Sprintf("zlb/%s/ckfilter/%s/%s", domainName, req.Name, req.Value)
 	_, err := client.KV().Put(&api.KVPair{
 		Key:   consulkey,
 		Value: []byte(fmt.Sprintf("%d", req.Lifecycle)),
@@ -159,7 +181,7 @@ func setCookieFilter(ctx context.Context, w http.ResponseWriter, r *http.Request
 	w.Write([]byte("ok"))
 }
 
-func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func removeDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	client, _ := ctx.Value(KEY_CONSUL_CLIENT).(*api.Client)
 	domainName := mux.Vars(r)["name"]
 	if domainName == "" {
@@ -167,25 +189,9 @@ func destroyDomain(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	consulkey := fmt.Sprintf(KEY_DOMAIN_FORMAT, domainName)
+	consulkey := fmt.Sprintf("zlb/%s", domainName)
 	_, err := client.KV().DeleteTree(consulkey+"/", nil)
 
-	if err != nil {
-		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	consulkey = fmt.Sprintf(KEY_HEALTHCHECK_FORMAT, domainName)
-	_, err = client.KV().Delete(consulkey, nil)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	consulkey = fmt.Sprintf("zlb_cookiefilter/%s/", domainName)
-	_, err = client.KV().DeleteTree(consulkey, nil)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"consulkey": consulkey}).Infof("delete consule  fail :%s", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -201,12 +207,12 @@ var routers = map[string]map[string]Handler{
 	"HEAD": {},
 	"GET":  {},
 	"POST": {
-		"/zlb/healthcheck/list":                 getDomainList,
-		"/zlb/healthcheck/{name:.*}/inspect":    getDomainJson,
-		"/zlb/healthcheck/{name:.*}/update":     putHealthCheckCfg,
-		"/zlb/healthcheck/{name:.*}/remove":     deleteHealthCheckCfg,
-		"/zlb/cookie/{name:.*}/setCookieFilter": setCookieFilter,
-		"/zlb/domain/{name:.*}/remove":          destroyDomain,
+		"/zlb/domains/list":                      getDomainList,
+		"/zlb/domains/{name:.*}/inspect":         getDomainJson,
+		"/zlb/domains/{name:.*}/create":          updateDomain,
+		"/zlb/domains/{name:.*}/update":          updateDomain,
+		"/zlb/domains/{name:.*}/remove":          removeDomain,
+		"/zlb/domains/{name:.*}/setCookieFilter": setCookieFilter,
 	},
 	"PUT":     {},
 	"DELETE":  {},
